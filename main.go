@@ -61,7 +61,7 @@ func (s *server) handleNewIdname() http.HandlerFunc {
 		Name string
 	}
 	parseArgs := func(r *http.Request) (map[string]string, error) {
-		upArgs := strings.Split(strings.Split((*r).URL.String(), "?")[1], "&")
+		upArgs := strings.Split(r.URL.RawQuery, "&")
 		args := make(map[string]string)
 		for _, unparsed := range upArgs {
 			kv := strings.Split(unparsed, "=")
