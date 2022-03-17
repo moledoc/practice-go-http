@@ -8,6 +8,7 @@ import (
 	"net/http"
 	_ "strconv"
 	"strings"
+	"sync"
 )
 
 // NOTE: no proper error handling/redirecting done!
@@ -90,14 +91,19 @@ func (s *server) handleNewIdname() http.HandlerFunc {
 	}
 }
 
-// TODO: make better
 func (s *server) handleGET() http.HandlerFunc {
 	idnames := map[int]string{1: "test1", 2: "test2", 3: "test3", 4: "test4", 5: "test5"}
+	var (
+		header map[string][]string
+		init   sync.Once
+	)
 	return func(w http.ResponseWriter, r *http.Request) {
-		header := w.Header()
 		enc, err := json.Marshal(idnames)
 		check(w, err)
-		header["Content-Type"] = []string{"application/json"}
+		init.Do(func() { // https://pace.dev/blog/2018/05/09/how-I-write-http-services-after-eight-years.html
+			header = w.Header()
+			header["Content-Type"] = []string{"application/json"}
+		})
 
 		_, err = w.Write(enc)
 		check(w, err)
@@ -109,7 +115,6 @@ func (s *server) handleGET() http.HandlerFunc {
 	}
 }
 
-// TODO: post request
 func (s *server) handlePOST() http.HandlerFunc {
 	type idname struct {
 		Id   int
