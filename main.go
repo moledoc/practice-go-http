@@ -2,12 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	_ "strconv"
+	"strings"
 )
 
-func check(err error) {
+// NOTE: no proper error handling/redirecting done!
+
+func check(w http.ResponseWriter, err error) {
 	if err != nil {
 		panic(err)
 	}
@@ -15,7 +20,9 @@ func check(err error) {
 
 func ReadFile(infile string) string {
 	contents, err := ioutil.ReadFile(infile)
-	check(err)
+	if err != nil {
+		panic(err)
+	}
 	return string(contents)
 }
 
@@ -24,8 +31,9 @@ type server struct{}
 func (s *server) routes() {
 	http.HandleFunc("/hi", s.handleHi())
 	http.HandleFunc("/inc", s.handleInc())
-	http.HandleFunc("/parsejson", s.handleParseJson())
+	http.HandleFunc("/new/idname", s.handleNewIdname())
 	http.HandleFunc("/get", s.handleGET())
+	http.HandleFunc("/post", s.handlePOST())
 	http.Handle("/html/", http.StripPrefix("/html/", http.FileServer(http.Dir("./htm"))))
 }
 
@@ -46,33 +54,77 @@ func (s *server) handleInc() http.HandlerFunc {
 	}
 }
 
-func (s *server) handleParseJson() http.HandlerFunc {
+func (s *server) handleNewIdname() http.HandlerFunc {
 	type idname struct {
-		Id   int
+		Id   string
 		Name string
 	}
-	var in idname
-	json.Unmarshal([]byte(`{"id":1,"name":"test1"}`), &in)
+	parseArgs := func(r *http.Request) (map[string]string, error) {
+		upArgs := strings.Split(strings.Split((*r).URL.String(), "?")[1], "&")
+		args := make(map[string]string)
+		for _, unparsed := range upArgs {
+			kv := strings.Split(unparsed, "=")
+			k, v := kv[0], kv[1]
+			// k, err := strconv.Atoi(kv[0])
+			// if err != nil {
+			// return map[string]string{}, err
+			// }
+			_, ok := args[k]
+			if ok {
+				return map[string]string{}, errors.New("Redefinition of parameter")
+			}
+			args[k] = v
+		}
+		return args, nil
+	}
+	// var in idname
+	// json.Unmarshal([]byte(`{"id":1,"name":"test1"}`), &in)
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(in)
-		fmt.Fprintf(w, "%v,%v\n", in.Id, in.Name)
+		// fmt.Println(in)
+		// fmt.Fprintf(w, "%v,%v\n", in.Id, in.Name)
+		args, err := parseArgs(r)
+		check(w, err)
+		j, err := json.Marshal(args)
+		check(w, err)
+		fmt.Fprintf(w, string(j))
 	}
 }
 
 // TODO: make better
 func (s *server) handleGET() http.HandlerFunc {
 	idnames := map[int]string{1: "test1", 2: "test2", 3: "test3", 4: "test4", 5: "test5"}
-	enc, err := json.Marshal(idnames)
-	check(err)
 	return func(w http.ResponseWriter, r *http.Request) {
+		header := w.Header()
+		enc, err := json.Marshal(idnames)
+		check(w, err)
+		header["Content-Type"] = []string{"application/json"}
+
+		_, err = w.Write(enc)
+		check(w, err)
 		// fmt.Printf("%v\n", `{"id":1,"name":"test1"}`)
 		// fmt.Fprintf(w, "%v\n", `{"id":1,"name":"test1"}`)
 		fmt.Printf("%s\n", enc)
-		fmt.Fprintf(w, "%s\n", enc)
+		fmt.Println(*r)
+		// fmt.Fprintf(w, "%s\n", enc)
 	}
 }
 
 // TODO: post request
+func (s *server) handlePOST() http.HandlerFunc {
+	type idname struct {
+		Id   int
+		Name string
+	}
+	var b idname
+	return func(w http.ResponseWriter, r *http.Request) {
+		// fmt.Println(*r)
+		fmt.Println((*r).Method)
+		fmt.Println((*r).Header)
+		check(w, json.NewDecoder(r.Body).Decode(&b))
+		fmt.Println(b)
+		fmt.Fprintf(w, "%v: Data received\n", http.StatusOK)
+	}
+}
 
 func main() {
 	s := server{}
